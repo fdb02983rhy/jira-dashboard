@@ -39,7 +39,6 @@ export function useActivities() {
 
 				dispatch({ type: "SET_ACTIVITIES", payload: result.activities });
 				dispatch({ type: "SET_ISSUE_TREE", payload: result.issueTree });
-				dispatch({ type: "SET_MEMBERS", payload: result.memberCounts });
 				dispatch({ type: "SET_ALL_MEMBERS", payload: result.allMembers });
 				toast.success(`Loaded ${result.activities.length} activities`);
 			} catch (e: unknown) {
@@ -53,11 +52,16 @@ export function useActivities() {
 	);
 
 	// Filter by member and category
-	const filteredActivities = state.activities.filter((a) => {
-		if (state.selectedMember && a.author !== state.selectedMember) return false;
-		if (!state.categoryFilters.has(a.fieldCategory)) return false;
-		return true;
-	});
+	const filteredActivities = useMemo(
+		() =>
+			state.activities.filter((a) => {
+				if (state.selectedMember && a.author !== state.selectedMember)
+					return false;
+				if (!state.categoryFilters.has(a.fieldCategory)) return false;
+				return true;
+			}),
+		[state.activities, state.selectedMember, state.categoryFilters],
+	);
 
 	// Recompute member counts based on category filters
 	const filteredMembers = useMemo(() => {

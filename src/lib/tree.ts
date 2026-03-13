@@ -14,15 +14,13 @@ export function buildTree(issueMap: Record<string, IssueMapEntry>): TreeNode[] {
 		}
 	});
 
-	// Find roots (issues without parents in our set, or epics)
-	const roots: IssueMapEntry[] = [];
-	issues.forEach((i) => {
-		const isChildOfSomeone = issues.some((other) => {
-			const kids = childrenMap[other.key] || [];
-			return kids.includes(i);
-		});
-		if (!isChildOfSomeone) roots.push(i);
-	});
+	// Find roots (issues that don't appear as a child of another issue)
+	const childKeySet = new Set(
+		Object.values(childrenMap)
+			.flat()
+			.map((i) => i.key),
+	);
+	const roots = issues.filter((i) => !childKeySet.has(i.key));
 
 	function toTreeNode(entry: IssueMapEntry): TreeNode {
 		const children = (childrenMap[entry.key] || [])

@@ -128,13 +128,21 @@ export async function fetchActivityData(
 		await res.json();
 
 	// Convert server activities → frontend Activity type
+	const validCategories = new Set<string>([
+		"status",
+		"assignee",
+		"date",
+		"comment",
+	]);
 	const activities: Activity[] = data.activities.map((a) => ({
 		id: a.id,
 		issueKey: a.issue_key,
 		issueSummary: a.issue_summary,
 		issueType: a.issue_type,
 		field: a.field,
-		fieldCategory: a.field_category as Activity["fieldCategory"],
+		fieldCategory: (validCategories.has(a.field_category)
+			? a.field_category
+			: "other") as Activity["fieldCategory"],
 		from: a.from_val,
 		to: a.to_val,
 		author: a.author,

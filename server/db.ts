@@ -141,8 +141,11 @@ const stmtGetActivities = db.prepare<DbActivity, [string, number, number]>(
 	"SELECT * FROM activities WHERE project = ? AND timestamp >= ? AND timestamp < ? ORDER BY timestamp DESC",
 );
 
-const stmtDeleteActivitiesByIssues = db.prepare<null, [string]>(
-	"DELETE FROM activities WHERE issue_key = ?",
+const stmtDeleteActivitiesByIssuesInRange = db.prepare<
+	null,
+	[string, number, number]
+>(
+	"DELETE FROM activities WHERE issue_key = ? AND timestamp >= ? AND timestamp < ?",
 );
 
 const stmtInsertActivity = db.prepare<
@@ -185,10 +188,14 @@ export function clearActivitiesForRange(
 	stmtDeleteActivitiesRange.run(project, startMs, endMs);
 }
 
-export function clearActivitiesForIssues(issueKeys: string[]): void {
+export function clearActivitiesForIssues(
+	issueKeys: string[],
+	startMs: number,
+	endMs: number,
+): void {
 	const txn = db.transaction(() => {
 		for (const key of issueKeys) {
-			stmtDeleteActivitiesByIssues.run(key);
+			stmtDeleteActivitiesByIssuesInRange.run(key, startMs, endMs);
 		}
 	});
 	txn();

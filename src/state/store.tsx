@@ -23,7 +23,6 @@ export interface AppState {
 	categoryFilters: Set<string>;
 
 	// fetched data
-	members: MemberCount[];
 	activities: Activity[];
 	issueTree: TreeNode[];
 	allMembers: Record<string, MemberCount>;
@@ -40,7 +39,6 @@ const initialState: AppState = {
 	period: "daily",
 	currentDate: new Date(),
 	categoryFilters: new Set(["status", "assignee", "date", "comment"]),
-	members: [],
 	activities: [],
 	issueTree: [],
 	allMembers: {},
@@ -56,7 +54,6 @@ type Action =
 	| { type: "SET_SELECTED_MEMBER"; payload: string | null }
 	| { type: "SET_PERIOD"; payload: "daily" | "weekly" | "monthly" }
 	| { type: "SET_CURRENT_DATE"; payload: Date }
-	| { type: "SET_MEMBERS"; payload: MemberCount[] }
 	| { type: "SET_ACTIVITIES"; payload: Activity[] }
 	| { type: "SET_ISSUE_TREE"; payload: TreeNode[] }
 	| { type: "SET_ALL_MEMBERS"; payload: Record<string, MemberCount> }
@@ -77,8 +74,6 @@ function reducer(state: AppState, action: Action): AppState {
 			return { ...state, period: action.payload };
 		case "SET_CURRENT_DATE":
 			return { ...state, currentDate: action.payload };
-		case "SET_MEMBERS":
-			return { ...state, members: action.payload };
 		case "SET_ACTIVITIES":
 			return { ...state, activities: action.payload };
 		case "SET_ISSUE_TREE":
@@ -106,15 +101,33 @@ function reducer(state: AppState, action: Action): AppState {
 const AppStateContext = createContext<AppState>(initialState);
 const AppDispatchContext = createContext<Dispatch<Action>>(() => {});
 
+function safeGetItem(key: string): string | null {
+	try {
+		return localStorage.getItem(key);
+	} catch (_e: unknown) {
+		return null;
+	}
+}
+
+const VALID_PERIODS = new Set<AppState["period"]>([
+	"daily",
+	"weekly",
+	"monthly",
+]);
+
 export function AppProvider({ children }: { children: ReactNode }) {
 	const [state, dispatch] = useReducer(reducer, initialState, () => {
 		// Hydrate UI preferences from localStorage
-		const saved = {
-			selectedProject: localStorage.getItem("jira_project") || "",
-			period:
-				(localStorage.getItem("jira_period") as AppState["period"]) || "daily",
+		const rawPeriod = safeGetItem("jira_period");
+		const period: AppState["period"] =
+			rawPeriod && VALID_PERIODS.has(rawPeriod as AppState["period"])
+				? (rawPeriod as AppState["period"])
+				: "daily";
+		return {
+			...initialState,
+			selectedProject: safeGetItem("jira_project") || "",
+			period,
 		};
-		return { ...initialState, ...saved };
 	});
 
 	return (
@@ -137,9 +150,17 @@ export function useAppDispatch() {
 // ── localStorage helpers ─────────────────────────────────────
 
 export function saveProject(project: string) {
-	localStorage.setItem("jira_project", project);
+	try {
+		localStorage.setItem("jira_project", project);
+	} catch (_e: unknown) {
+		// storage unavailable
+	}
 }
 
 export function savePeriod(period: "daily" | "weekly" | "monthly") {
-	localStorage.setItem("jira_period", period);
+	try {
+		localStorage.setItem("jira_period", period);
+	} catch (_e: unknown) {
+		// storage unavailable
+	}
 }

@@ -13,7 +13,11 @@ import {
 	setMembers,
 	setSyncedAt,
 } from "./db.ts";
-import { fetchActivitiesFromJira, fetchMembersFromJira } from "./jira.ts";
+import {
+	fetchActivitiesFromJira,
+	fetchMembersFromJira,
+	isValidProjectKey,
+} from "./jira.ts";
 
 const PORT = 3456;
 const SYNC_TTL_MS = 2 * 60 * 1000; // 2 minutes
@@ -53,22 +57,30 @@ app.get("/api/config", (c) => {
 // ── Activities (cached + delta sync) ────────────────────────
 
 app.post("/api/activities", async (c) => {
-	const body = await c.req.json<{
-		project: string;
-		start: string;
-		end: string;
-		force?: boolean;
-	}>();
+	let body: { project: string; start: string; end: string; force?: boolean };
+	try {
+		body = await c.req.json();
+	} catch (_e: unknown) {
+		return c.json({ error: "Invalid JSON body" }, 400);
+	}
 
 	const { project, start, end, force } = body;
 	if (!project || !start || !end) {
 		return c.json({ error: "Missing project, start, or end" }, 400);
 	}
 
+	if (!isValidProjectKey(project)) {
+		return c.json({ error: "Invalid project key" }, 400);
+	}
+
 	const startMs = new Date(start).getTime();
 	const endNext = new Date(end);
 	endNext.setDate(endNext.getDate() + 1);
 	const endMs = endNext.getTime();
+
+	if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
+		return c.json({ error: "Invalid date format" }, 400);
+	}
 
 	const lastSynced = getSyncedAt(project, start, end);
 	const isFresh = lastSynced && Date.now() - lastSynced < SYNC_TTL_MS;
@@ -99,7 +111,7 @@ app.post("/api/activities", async (c) => {
 				);
 				// Remove old activities for changed issues, insert fresh ones
 				if (result.changedIssueKeys.length > 0) {
-					clearActivitiesForIssues(result.changedIssueKeys);
+					clearActivitiesForIssues(result.changedIssueKeys, startMs, endMs);
 					insertActivities(result.activities);
 					insertIssues(result.issues);
 				}
@@ -140,7 +152,7 @@ app.get("/api/members/:project", async (c) => {
 			const fetched = await fetchMembersFromJira(project);
 			setMembers(project, fetched);
 			names = fetched;
-		} catch (e) {
+		} catch (e: unknown) {
 			console.warn("Failed to fetch members from Jira:", e);
 			// Return cached if available
 		}

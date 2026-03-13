@@ -137,6 +137,14 @@ interface JiraChangelog {
 	}>;
 }
 
+// ── Project Key Validation ──────────────────────────────────
+
+const PROJECT_KEY_RE = /^[A-Za-z][A-Za-z0-9_]{0,19}$/;
+
+export function isValidProjectKey(key: string): boolean {
+	return PROJECT_KEY_RE.test(key);
+}
+
 // ── Fetch & Process Activities ──────────────────────────────
 
 export interface FetchResult {
@@ -151,6 +159,9 @@ export async function fetchActivitiesFromJira(
 	endDate: string,
 	sinceDate?: string,
 ): Promise<FetchResult> {
+	if (!isValidProjectKey(project)) {
+		throw new Error(`Invalid project key: ${project}`);
+	}
 	const startMs = new Date(startDate).getTime();
 	const endNext = new Date(endDate);
 	endNext.setDate(endNext.getDate() + 1);
@@ -192,7 +203,6 @@ export async function fetchActivitiesFromJira(
 	const activities: DbActivity[] = [];
 	const issues: DbIssue[] = [];
 	const changedIssueKeys: string[] = [];
-	let idCounter = Date.now();
 
 	for (const issue of allIssues) {
 		changedIssueKeys.push(issue.key);
@@ -224,7 +234,7 @@ export async function fetchActivitiesFromJira(
 					) {
 						const cat = fieldCategory(item.fieldId || item.field);
 						activities.push({
-							id: `act-${++idCounter}`,
+							id: `${issue.key}-${history.id}-${item.fieldId || item.field}`,
 							project,
 							issue_key: issue.key,
 							issue_summary: issue.fields.summary,
@@ -243,7 +253,7 @@ export async function fetchActivitiesFromJira(
 					}
 				}
 			}
-		} catch (e) {
+		} catch (e: unknown) {
 			console.warn(`Changelog fetch failed for ${issue.key}:`, e);
 		}
 
@@ -254,7 +264,7 @@ export async function fetchActivitiesFromJira(
 			if (cMs < startMs || cMs >= endMs) continue;
 
 			activities.push({
-				id: `act-${++idCounter}`,
+				id: `${issue.key}-comment-${c.id}`,
 				project,
 				issue_key: issue.key,
 				issue_summary: issue.fields.summary,
@@ -284,6 +294,9 @@ interface JiraRole {
 }
 
 export async function fetchMembersFromJira(project: string): Promise<string[]> {
+	if (!isValidProjectKey(project)) {
+		throw new Error(`Invalid project key: ${project}`);
+	}
 	const names = new Set<string>();
 
 	try {
@@ -301,7 +314,7 @@ export async function fetchMembersFromJira(project: string): Promise<string[]> {
 						names.add(actor.displayName);
 					}
 				}
-			} catch {
+			} catch (_e: unknown) {
 				// skip inaccessible roles
 			}
 		}
@@ -323,7 +336,7 @@ export async function fetchMembersFromJira(project: string): Promise<string[]> {
 				const name = issue.fields.assignee?.displayName;
 				if (name) names.add(name);
 			}
-		} catch {
+		} catch (_e: unknown) {
 			// skip
 		}
 	} catch (e) {
