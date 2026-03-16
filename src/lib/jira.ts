@@ -215,3 +215,40 @@ export async function fetchStaleIssues(
 	const data: { issues: StaleIssue[] } = await res.json();
 	return data.issues;
 }
+
+// ─── Fetch Stale Counts (summary per member) ────────
+
+export async function fetchStaleCounts(
+	projectKey: string,
+	beforeDate: string,
+): Promise<{ member: string; count: number }[]> {
+	const res = await fetch(
+		`/api/stale-counts/${projectKey}?before=${encodeURIComponent(beforeDate)}`,
+	);
+	if (!res.ok) {
+		const data = await res.json().catch(() => ({ error: "Request failed" }));
+		throw new Error(
+			(data as { error?: string }).error || "Failed to fetch stale counts",
+		);
+	}
+	const data: { counts: { member: string; count: number }[] } =
+		await res.json();
+	return data.counts;
+}
+
+// ─── Fetch Unassigned Issues ────────────────────────
+
+export async function fetchUnassignedIssues(
+	projectKey: string,
+): Promise<import("@/types").UnassignedIssue[]> {
+	const res = await fetch(`/api/unassigned-issues/${projectKey}`);
+	if (!res.ok) {
+		const data = await res.json().catch(() => ({ error: "Request failed" }));
+		throw new Error(
+			(data as { error?: string }).error || "Failed to fetch unassigned issues",
+		);
+	}
+	const data: { issues: import("@/types").UnassignedIssue[] } =
+		await res.json();
+	return data.issues;
+}
