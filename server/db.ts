@@ -93,6 +93,32 @@ db.run(`
   )
 `);
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS stale_counts (
+    project TEXT NOT NULL,
+    before_date TEXT NOT NULL,
+    member TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (project, before_date, member)
+  )
+`);
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS unassigned_issues (
+    key TEXT NOT NULL,
+    project TEXT NOT NULL,
+    summary TEXT,
+    type TEXT,
+    status TEXT,
+    parent_key TEXT,
+    is_context INTEGER NOT NULL DEFAULT 0,
+    updated INTEGER NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (key, project)
+  )
+`);
+
 // ── Types ───────────────────────────────────────────────────
 
 export interface DbActivity {
@@ -118,6 +144,26 @@ export interface DbIssue {
 	parent_key: string | null;
 	status: string;
 	assignee: string;
+}
+
+export interface DbStaleCount {
+	project: string;
+	before_date: string;
+	member: string;
+	count: number;
+	fetched_at: number;
+}
+
+export interface DbUnassignedIssue {
+	key: string;
+	project: string;
+	summary: string;
+	type: string;
+	status: string;
+	parent_key: string | null;
+	is_context: number;
+	updated: number;
+	fetched_at: number;
 }
 
 // ── Sync Meta ───────────────────────────────────────────────
@@ -411,6 +457,115 @@ export function setMembers(project: string, names: string[]): void {
 		stmtDeleteMembers.run(project);
 		for (const name of names) {
 			stmtInsertMember.run(project, name);
+		}
+	});
+	txn();
+}
+
+// ── Stale Counts ────────────────────────────────────────────
+
+const STALE_COUNTS_TTL_MS = 5 * 60 * 1000;
+
+const stmtGetStaleCounts = db.prepare<DbStaleCount, [string, string]>(
+	"SELECT * FROM stale_counts WHERE project = ? AND before_date = ? ORDER BY count DESC",
+);
+
+const stmtDeleteStaleCounts = db.prepare<null, [string, string]>(
+	"DELETE FROM stale_counts WHERE project = ? AND before_date = ?",
+);
+
+const stmtInsertStaleCount = db.prepare<
+	null,
+	[string, string, string, number, number]
+>(
+	"INSERT OR REPLACE INTO stale_counts (project, before_date, member, count, fetched_at) VALUES (?, ?, ?, ?, ?)",
+);
+
+export function getStaleCounts(
+	project: string,
+	beforeDate: string,
+): { counts: DbStaleCount[]; isFresh: boolean } {
+	const counts = stmtGetStaleCounts.all(project, beforeDate);
+	const isFresh =
+		counts.length > 0 &&
+		Date.now() - (counts[0]?.fetched_at ?? 0) < STALE_COUNTS_TTL_MS;
+	return { counts, isFresh };
+}
+
+export function setStaleCounts(
+	project: string,
+	beforeDate: string,
+	counts: { member: string; count: number }[],
+): void {
+	const now = Date.now();
+	const txn = db.transaction(() => {
+		stmtDeleteStaleCounts.run(project, beforeDate);
+		for (const c of counts) {
+			stmtInsertStaleCount.run(project, beforeDate, c.member, c.count, now);
+		}
+	});
+	txn();
+}
+
+// ── Unassigned Issues ───────────────────────────────────────
+
+const UNASSIGNED_TTL_MS = 5 * 60 * 1000;
+
+const stmtGetUnassignedIssues = db.prepare<DbUnassignedIssue, [string]>(
+	"SELECT * FROM unassigned_issues WHERE project = ? ORDER BY updated ASC",
+);
+
+const stmtDeleteUnassignedIssues = db.prepare<null, [string]>(
+	"DELETE FROM unassigned_issues WHERE project = ?",
+);
+
+const stmtInsertUnassignedIssue = db.prepare<
+	null,
+	[
+		string,
+		string,
+		string,
+		string,
+		string,
+		string | null,
+		number,
+		number,
+		number,
+	]
+>(
+	"INSERT OR REPLACE INTO unassigned_issues (key, project, summary, type, status, parent_key, is_context, updated, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+);
+
+export function getUnassignedIssues(project: string): {
+	issues: DbUnassignedIssue[];
+	isFresh: boolean;
+} {
+	const issues = stmtGetUnassignedIssues.all(project);
+	const isFresh =
+		issues.length > 0 &&
+		Date.now() - (issues[0]?.fetched_at ?? 0) < UNASSIGNED_TTL_MS;
+	return { issues, isFresh };
+}
+
+export function setUnassignedIssues(
+	project: string,
+	issues: Omit<DbUnassignedIssue, "fetched_at">[],
+): void {
+	const now = Date.now();
+	const txn = db.transaction(() => {
+		stmtDeleteUnassignedIssues.run(project);
+		for (const i of issues) {
+			stmtInsertUnassignedIssue.run(
+				i.key,
+				i.project,
+				i.summary,
+				i.type,
+				i.status,
+				i.parent_key,
+				i.is_context,
+				i.updated,
+				now,
+			);
 		}
 	});
 	txn();
