@@ -81,6 +81,7 @@ export function UnassignedIssues() {
 	const { selectedProject } = useAppState();
 	const [issues, setIssues] = useState<UnassignedIssue[]>([]);
 	const [loading, setLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
 		if (!selectedProject) {
@@ -90,6 +91,7 @@ export function UnassignedIssues() {
 
 		let cancelled = false;
 		setLoading(true);
+		setError(null);
 
 		fetchUnassignedIssues(selectedProject)
 			.then((result) => {
@@ -97,7 +99,12 @@ export function UnassignedIssues() {
 			})
 			.catch((e: unknown) => {
 				console.warn("[UnassignedIssues] fetch failed:", e);
-				if (!cancelled) setIssues([]);
+				if (!cancelled) {
+					setIssues([]);
+					setError(
+						e instanceof Error ? e.message : "Failed to load unassigned issues",
+					);
+				}
 			})
 			.finally(() => {
 				if (!cancelled) setLoading(false);
@@ -126,6 +133,10 @@ export function UnassignedIssues() {
 			{loading ? (
 				<div className="flex items-center justify-center py-8 text-muted-foreground">
 					<span className="text-xs">Loading unassigned issues...</span>
+				</div>
+			) : error ? (
+				<div className="flex flex-col items-center justify-center py-8 text-center text-destructive">
+					<p className="text-xs">{error}</p>
 				</div>
 			) : tree.length === 0 ? (
 				<div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">

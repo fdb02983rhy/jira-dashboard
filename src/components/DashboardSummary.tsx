@@ -236,6 +236,7 @@ function StaleCountsPanel() {
 	const dispatch = useAppDispatch();
 	const [counts, setCounts] = useState<{ member: string; count: number }[]>([]);
 	const [loading, setLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 
 	const beforeDate = useMemo(() => {
 		const range = getDateRange(state.period, state.currentDate);
@@ -250,6 +251,7 @@ function StaleCountsPanel() {
 
 		let cancelled = false;
 		setLoading(true);
+		setError(null);
 
 		fetchStaleCounts(state.selectedProject, beforeDate)
 			.then((result) => {
@@ -257,7 +259,12 @@ function StaleCountsPanel() {
 			})
 			.catch((e: unknown) => {
 				console.warn("[StaleCounts] fetch failed:", e);
-				if (!cancelled) setCounts([]);
+				if (!cancelled) {
+					setCounts([]);
+					setError(
+						e instanceof Error ? e.message : "Failed to load stale counts",
+					);
+				}
 			})
 			.finally(() => {
 				if (!cancelled) setLoading(false);
@@ -286,6 +293,10 @@ function StaleCountsPanel() {
 				<div className="flex items-center justify-center py-6 text-muted-foreground">
 					<Loader2 className="mr-2 size-4 animate-spin" />
 					<span className="text-xs">Loading stale counts...</span>
+				</div>
+			) : error ? (
+				<div className="flex flex-col items-center justify-center py-6 text-center text-destructive">
+					<p className="text-xs">{error}</p>
 				</div>
 			) : counts.length === 0 ? (
 				<div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground">
