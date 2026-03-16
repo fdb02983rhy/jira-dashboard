@@ -172,3 +172,31 @@ export interface IssueMapEntry {
 	assignee: string;
 	changes: Activity[];
 }
+
+// ─── Stale Counts (summary) ─────────────────────────
+
+export interface StaleCount {
+	member: string;
+	count: number;
+}
+
+// ─── Unassigned Issues ──────────────────────────────
+
+export interface UnassignedIssue {
+	key: string;
+	summary: string;
+	type: string;
+	status: string;
+	parent_key: string | null;
+	is_context: boolean | number;
+	updated: number;
+}
+
+export interface UnassignedTreeNode {
+	key: string;
+	summary: string;
+	type: "epic" | "task" | "subtask" | "story" | "bug";
+	status: string;
+	isContext: boolean;
+	children: UnassignedTreeNode[];
+}
