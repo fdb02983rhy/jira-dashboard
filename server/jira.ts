@@ -433,3 +433,141 @@ export async function fetchStaleIssuesFromJira(
 
 	return staleIssues;
 }
+
+// ── Fetch Stale Issue Counts (grouped by assignee) ──
+
+export interface StaleCountResult {
+	member: string;
+	count: number;
+}
+
+export async function fetchStaleCountsFromJira(
+	project: string,
+	beforeDate: string,
+): Promise<StaleCountResult[]> {
+	if (!isValidProjectKey(project)) {
+		throw new Error(`Invalid project key: ${project}`);
+	}
+
+	const jql = `project = "${project}" AND assignee IS NOT EMPTY AND updated < "${beforeDate}" AND statusCategory != Done ORDER BY assignee ASC`;
+
+	let allIssues: JiraSearchResponse["issues"] = [];
+	let nextPageToken: string | null = null;
+	while (allIssues.length < 200) {
+		const body: Record<string, unknown> = {
+			jql,
+			maxResults: 50,
+			fields: ["assignee"],
+		};
+		if (nextPageToken) body.nextPageToken = nextPageToken;
+
+		const data = await jiraFetch<JiraSearchResponse>("/rest/api/3/search/jql", {
+			method: "POST",
+			body,
+		});
+		allIssues = allIssues.concat(data.issues || []);
+
+		if (data.isLast || !data.nextPageToken || data.issues.length === 0) break;
+		nextPageToken = data.nextPageToken;
+	}
+
+	// Group by assignee
+	const counts = new Map<string, number>();
+	for (const issue of allIssues) {
+		const name = issue.fields.assignee?.displayName || "Unknown";
+		counts.set(name, (counts.get(name) || 0) + 1);
+	}
+
+	return [...counts.entries()]
+		.map(([member, count]) => ({ member, count }))
+		.sort((a, b) => b.count - a.count);
+}
+
+// ── Fetch Unassigned Issues ─────────────────────────
+
+export interface UnassignedIssueResult {
+	key: string;
+	summary: string;
+	type: string;
+	status: string;
+	parent_key: string | null;
+	updated: number;
+	is_context: boolean;
+}
+
+export async function fetchUnassignedIssuesFromJira(
+	project: string,
+): Promise<UnassignedIssueResult[]> {
+	if (!isValidProjectKey(project)) {
+		throw new Error(`Invalid project key: ${project}`);
+	}
+
+	const jql = `project = "${project}" AND assignee IS EMPTY AND statusCategory != Done ORDER BY updated ASC`;
+
+	const data = await jiraFetch<JiraSearchResponse>("/rest/api/3/search/jql", {
+		method: "POST",
+		body: {
+			jql,
+			maxResults: 50,
+			fields: ["summary", "status", "issuetype", "parent", "updated"],
+		},
+	});
+
+	const issues: UnassignedIssueResult[] = (data.issues || []).map((issue) => ({
+		key: issue.key,
+		summary: issue.fields.summary,
+		type: issue.fields.issuetype?.name?.toLowerCase() || "task",
+		status: issue.fields.status?.name || "",
+		parent_key: issue.fields.parent?.key || null,
+		updated: new Date(issue.fields.updated || 0).getTime(),
+		is_context: false,
+	}));
+
+	// Walk up parent chain for tree context (same pattern as stale issues)
+	const knownKeys = new Set(issues.map((i) => i.key));
+	const MAX_DEPTH = 5;
+
+	for (let depth = 0; depth < MAX_DEPTH; depth++) {
+		const missingParentKeys = [
+			...new Set(
+				issues
+					.map((i) => i.parent_key)
+					.filter((k): k is string => k !== null && !knownKeys.has(k)),
+			),
+		];
+
+		if (missingParentKeys.length === 0) break;
+
+		try {
+			const parentJql = `key in (${missingParentKeys.map((k) => `"${k}"`).join(",")})`;
+			const parentData = await jiraFetch<JiraSearchResponse>(
+				"/rest/api/3/search/jql",
+				{
+					method: "POST",
+					body: {
+						jql: parentJql,
+						maxResults: missingParentKeys.length,
+						fields: ["summary", "status", "issuetype", "parent", "updated"],
+					},
+				},
+			);
+			for (const issue of parentData.issues || []) {
+				knownKeys.add(issue.key);
+				issues.push({
+					key: issue.key,
+					summary: issue.fields.summary,
+					type: issue.fields.issuetype?.name?.toLowerCase() || "task",
+					status: issue.fields.status?.name || "",
+					parent_key: issue.fields.parent?.key || null,
+					updated: new Date(issue.fields.updated || 0).getTime(),
+					is_context: true,
+				});
+			}
+		} catch (e: unknown) {
+			console.warn("[unassigned] Failed to fetch parent context issues:", e);
+			break;
+		}
+	}
+
+	return issues;
+}
