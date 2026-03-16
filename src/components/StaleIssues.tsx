@@ -116,6 +116,7 @@ export function StaleIssues({ activeIssueKeys }: StaleIssuesProps) {
 	const state = useAppState();
 	const [issues, setIssues] = useState<StaleIssue[]>([]);
 	const [loading, setLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 
 	const { selectedProject, selectedMember, period, currentDate } = state;
 
@@ -137,6 +138,7 @@ export function StaleIssues({ activeIssueKeys }: StaleIssuesProps) {
 
 		let cancelled = false;
 		setLoading(true);
+		setError(null);
 
 		fetchStaleIssues(selectedProject, selectedMember, beforeDate)
 			.then((result) => {
@@ -144,7 +146,12 @@ export function StaleIssues({ activeIssueKeys }: StaleIssuesProps) {
 			})
 			.catch((e: unknown) => {
 				console.warn("[StaleIssues] fetch failed:", e);
-				if (!cancelled) setIssues([]);
+				if (!cancelled) {
+					setIssues([]);
+					setError(
+						e instanceof Error ? e.message : "Failed to load stale issues",
+					);
+				}
 			})
 			.finally(() => {
 				if (!cancelled) setLoading(false);
@@ -181,6 +188,10 @@ export function StaleIssues({ activeIssueKeys }: StaleIssuesProps) {
 			{loading ? (
 				<div className="flex items-center justify-center py-8 text-muted-foreground">
 					<span className="text-xs">Loading stale issues...</span>
+				</div>
+			) : error ? (
+				<div className="flex flex-col items-center justify-center py-8 text-center text-destructive">
+					<p className="text-xs">{error}</p>
 				</div>
 			) : tree.length === 0 ? (
 				<div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
