@@ -10,7 +10,6 @@
 ```sh
 bun run dev        # Vite + Hono backend (both)
 bun run lint:fix   # Biome lint + format
-bun run build      # Production build
 ```
 
 ## Rules
