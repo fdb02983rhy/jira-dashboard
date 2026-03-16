@@ -1,6 +1,7 @@
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
 import { ActivityFeed } from "@/components/ActivityFeed";
+import { DashboardSummary } from "@/components/DashboardSummary";
 import { EpicTree } from "@/components/EpicTree";
 import { Sidebar } from "@/components/Sidebar";
 import { StaleIssues } from "@/components/StaleIssues";
@@ -87,15 +88,23 @@ export default function App() {
 							{/* Summary cards */}
 							<SummaryCards activities={filteredActivities} />
 
-							{/* Content grid */}
-							<div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-								<ActivityFeed activities={filteredActivities} />
-								<EpicTree issueTree={filteredIssueTree} />
-							</div>
-
-							{state.selectedMember && (
+							{/* Content — summary dashboard or member detail */}
+							{state.selectedMember ? (
+								<>
+									<div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+										<ActivityFeed activities={filteredActivities} />
+										<EpicTree issueTree={filteredIssueTree} />
+									</div>
+									<div className="mt-6">
+										<StaleIssues activeIssueKeys={filteredIssueTree} />
+									</div>
+								</>
+							) : (
 								<div className="mt-6">
-									<StaleIssues activeIssueKeys={filteredIssueTree} />
+									<DashboardSummary
+										activities={filteredActivities}
+										members={filteredMembers}
+									/>
 								</div>
 							)}
 						</>
