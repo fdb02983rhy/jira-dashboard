@@ -130,6 +130,29 @@ export interface AdfNode {
 	content?: AdfNode[];
 }
 
+// ─── Stale Issues ───────────────────────────────────
+
+export interface StaleIssue {
+	key: string;
+	summary: string;
+	type: string;
+	status: string;
+	assignee: string;
+	parent_key: string | null;
+	is_context: boolean | number; // true/1 = parent shown for context, not actually stale
+	updated: number;
+}
+
+export interface StaleTreeNode {
+	key: string;
+	summary: string;
+	type: "epic" | "task" | "subtask" | "story" | "bug";
+	status: string;
+	updated: number;
+	isContext: boolean;
+	children: StaleTreeNode[];
+}
+
 // ─── Date Range ─────────────────────────────────────
 
 export interface DateRange {

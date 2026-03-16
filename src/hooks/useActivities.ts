@@ -71,9 +71,6 @@ export function useActivities() {
 		}
 		for (const a of state.activities) {
 			if (!state.categoryFilters.has(a.fieldCategory)) continue;
-			if (!map[a.author]) {
-				map[a.author] = { name: a.author, count: 0 };
-			}
 			const member = map[a.author];
 			if (member) member.count++;
 		}

@@ -62,6 +62,37 @@ db.run(`
   ON sync_meta(project)
 `);
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS stale_issues (
+    key TEXT NOT NULL,
+    project TEXT NOT NULL,
+    member TEXT NOT NULL,
+    summary TEXT,
+    type TEXT,
+    status TEXT,
+    assignee TEXT,
+    parent_key TEXT,
+    is_context INTEGER NOT NULL DEFAULT 0,
+    updated INTEGER NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (key, member)
+  )
+`);
+
+db.run(`
+  CREATE INDEX IF NOT EXISTS idx_stale_project_member
+  ON stale_issues(project, member)
+`);
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS stale_meta (
+    project TEXT NOT NULL,
+    member TEXT NOT NULL,
+    before_date TEXT NOT NULL,
+    PRIMARY KEY (project, member)
+  )
+`);
+
 // ── Types ───────────────────────────────────────────────────
 
 export interface DbActivity {
@@ -273,6 +304,106 @@ const stmtDeleteMembers = db.prepare<null, [string]>(
 
 export function getMembers(project: string): string[] {
 	return stmtGetMembers.all(project).map((r) => r.name);
+}
+
+// ── Stale Issues ────────────────────────────────────────────
+
+export interface DbStaleIssue {
+	key: string;
+	project: string;
+	member: string;
+	summary: string;
+	type: string;
+	status: string;
+	assignee: string;
+	parent_key: string | null;
+	is_context: number; // 0 = stale, 1 = context parent
+	updated: number;
+	fetched_at: number;
+}
+
+const STALE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+const stmtGetStaleIssues = db.prepare<DbStaleIssue, [string, string]>(
+	"SELECT * FROM stale_issues WHERE project = ? AND member = ? ORDER BY updated ASC",
+);
+
+const stmtGetStaleBeforeDate = db.prepare<
+	{ before_date: string | null },
+	[string, string]
+>(
+	"SELECT before_date FROM stale_meta WHERE project = ? AND member = ? LIMIT 1",
+);
+
+const stmtSetStaleBeforeDate = db.prepare<null, [string, string, string]>(
+	"INSERT OR REPLACE INTO stale_meta (project, member, before_date) VALUES (?, ?, ?)",
+);
+
+const stmtInsertStaleIssue = db.prepare<
+	null,
+	[
+		string,
+		string,
+		string,
+		string,
+		string,
+		string,
+		string,
+		string | null,
+		number,
+		number,
+		number,
+	]
+>(
+	"INSERT OR REPLACE INTO stale_issues (key, project, member, summary, type, status, assignee, parent_key, is_context, updated, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+);
+
+const stmtDeleteStaleIssues = db.prepare<null, [string, string]>(
+	"DELETE FROM stale_issues WHERE project = ? AND member = ?",
+);
+
+export function getStaleIssues(
+	project: string,
+	member: string,
+	beforeDate: string,
+): { issues: DbStaleIssue[]; isFresh: boolean } {
+	const issues = stmtGetStaleIssues.all(project, member);
+	const cachedDate = stmtGetStaleBeforeDate.get(project, member);
+	const dateMatches = cachedDate?.before_date === beforeDate;
+	const isFresh =
+		dateMatches &&
+		issues.length > 0 &&
+		Date.now() - (issues[0]?.fetched_at ?? 0) < STALE_TTL_MS;
+	return { issues: dateMatches ? issues : [], isFresh };
+}
+
+export function setStaleIssues(
+	project: string,
+	member: string,
+	beforeDate: string,
+	issues: Omit<DbStaleIssue, "fetched_at">[],
+): void {
+	const now = Date.now();
+	const txn = db.transaction(() => {
+		stmtDeleteStaleIssues.run(project, member);
+		stmtSetStaleBeforeDate.run(project, member, beforeDate);
+		for (const i of issues) {
+			stmtInsertStaleIssue.run(
+				i.key,
+				i.project,
+				i.member,
+				i.summary,
+				i.type,
+				i.status,
+				i.assignee,
+				i.parent_key,
+				i.is_context ? 1 : 0,
+				i.updated,
+				now,
+			);
+		}
+	});
+	txn();
 }
 
 export function setMembers(project: string, names: string[]): void {

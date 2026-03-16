@@ -6,6 +6,7 @@ import type {
 	JiraProject,
 	JiraUser,
 	MemberCount,
+	StaleIssue,
 	TreeNode,
 } from "@/types";
 
@@ -179,9 +180,6 @@ export async function fetchActivityData(
 		m.count = 0;
 	}
 	for (const a of activities) {
-		if (!memberMap[a.author]) {
-			memberMap[a.author] = { name: a.author, count: 0 };
-		}
 		const member = memberMap[a.author];
 		if (member) member.count++;
 	}
@@ -196,4 +194,24 @@ export async function fetchActivityData(
 	const issueTree = buildTree(issueMap);
 
 	return { activities, issueTree, memberCounts, allMembers: memberMap };
+}
+
+// ─── Fetch Stale Issues (assigned, not updated in range) ──
+
+export async function fetchStaleIssues(
+	projectKey: string,
+	member: string,
+	beforeDate: string,
+): Promise<StaleIssue[]> {
+	const res = await fetch(
+		`/api/stale-issues/${projectKey}?member=${encodeURIComponent(member)}&before=${encodeURIComponent(beforeDate)}`,
+	);
+	if (!res.ok) {
+		const data = await res.json().catch(() => ({ error: "Request failed" }));
+		throw new Error(
+			(data as { error?: string }).error || "Failed to fetch stale issues",
+		);
+	}
+	const data: { issues: StaleIssue[] } = await res.json();
+	return data.issues;
 }

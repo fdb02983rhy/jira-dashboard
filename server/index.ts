@@ -7,15 +7,18 @@ import {
 	getActivities,
 	getIssues,
 	getMembers,
+	getStaleIssues,
 	getSyncedAt,
 	insertActivities,
 	insertIssues,
 	setMembers,
+	setStaleIssues,
 	setSyncedAt,
 } from "./db.ts";
 import {
 	fetchActivitiesFromJira,
 	fetchMembersFromJira,
+	fetchStaleIssuesFromJira,
 	isValidProjectKey,
 } from "./jira.ts";
 
@@ -159,6 +162,46 @@ app.get("/api/members/:project", async (c) => {
 	}
 
 	return c.json({ members: names });
+});
+
+// ── Stale Issues (assigned but not updated) ─────────────────
+
+app.get("/api/stale-issues/:project", async (c) => {
+	const project = c.req.param("project");
+	const member = c.req.query("member");
+	const before = c.req.query("before");
+
+	if (!member || !before) {
+		return c.json({ error: "Missing member or before query params" }, 400);
+	}
+	if (!isValidProjectKey(project)) {
+		return c.json({ error: "Invalid project key" }, 400);
+	}
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(before)) {
+		return c.json({ error: "Invalid date format (expected YYYY-MM-DD)" }, 400);
+	}
+
+	// Check cache
+	const cached = getStaleIssues(project, member, before);
+	if (cached.isFresh) {
+		return c.json({ issues: cached.issues });
+	}
+
+	// Fetch from Jira
+	try {
+		const fetched = await fetchStaleIssuesFromJira(project, member, before);
+		const dbIssues = fetched.map((i) => ({ ...i, project, member }));
+		setStaleIssues(project, member, before, dbIssues);
+		return c.json({ issues: dbIssues });
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Failed to fetch stale issues";
+		console.warn(`[stale] Error for ${member}:`, msg);
+		// Return cached if available
+		if (cached.issues.length > 0) {
+			return c.json({ issues: cached.issues });
+		}
+		return c.json({ error: msg }, 502);
+	}
 });
 
 // ── Jira Proxy (for connection test + projects) ─────────────

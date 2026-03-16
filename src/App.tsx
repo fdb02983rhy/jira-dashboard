@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { EpicTree } from "@/components/EpicTree";
 import { Sidebar } from "@/components/Sidebar";
+import { StaleIssues } from "@/components/StaleIssues";
 import { SummaryCards } from "@/components/SummaryCards";
 import { Topbar } from "@/components/Topbar";
 import { Toaster } from "@/components/ui/sonner";
@@ -91,6 +92,12 @@ export default function App() {
 								<ActivityFeed activities={filteredActivities} />
 								<EpicTree issueTree={filteredIssueTree} />
 							</div>
+
+							{state.selectedMember && (
+								<div className="mt-6">
+									<StaleIssues activeIssueKeys={filteredIssueTree} />
+								</div>
+							)}
 						</>
 					)}
 				</main>

@@ -6,7 +6,7 @@ export function buildTree(issueMap: Record<string, IssueMapEntry>): TreeNode[] {
 	const issues = Object.values(issueMap).filter((i) => i.changes.length > 0);
 	const childrenMap: Record<string, IssueMapEntry[]> = {};
 
-	// Group by parent
+	// Group by parent — link to any parent in issueMap (including ones without changes)
 	issues.forEach((i) => {
 		if (i.parentKey && issueMap[i.parentKey]) {
 			if (!childrenMap[i.parentKey]) childrenMap[i.parentKey] = [];
@@ -14,17 +14,45 @@ export function buildTree(issueMap: Record<string, IssueMapEntry>): TreeNode[] {
 		}
 	});
 
-	// Find roots (issues that don't appear as a child of another issue)
+	// Walk up from each active issue to its top ancestor in issueMap
+	// Include ancestors as context nodes even if they have no changes
+	const includedKeys = new Set(issues.map((i) => i.key));
+	for (const issue of issues) {
+		let current = issue;
+		while (current.parentKey && issueMap[current.parentKey]) {
+			const parent = issueMap[current.parentKey];
+			if (!parent) break;
+			if (!includedKeys.has(parent.key)) {
+				includedKeys.add(parent.key);
+				// Ensure parent appears in childrenMap if it has active descendants
+				if (parent.parentKey && issueMap[parent.parentKey]) {
+					if (!childrenMap[parent.parentKey])
+						childrenMap[parent.parentKey] = [];
+					if (
+						!childrenMap[parent.parentKey]?.some((c) => c.key === parent.key)
+					) {
+						childrenMap[parent.parentKey]?.push(parent);
+					}
+				}
+			}
+			current = parent;
+		}
+	}
+
+	// Find roots — included issues that aren't a child of another included issue
 	const childKeySet = new Set(
 		Object.values(childrenMap)
 			.flat()
 			.map((i) => i.key),
 	);
-	const roots = issues.filter((i) => !childKeySet.has(i.key));
+	const allIncluded = [...includedKeys]
+		.map((k) => issueMap[k])
+		.filter((i): i is IssueMapEntry => !!i);
+	const roots = allIncluded.filter((i) => !childKeySet.has(i.key));
 
 	function toTreeNode(entry: IssueMapEntry): TreeNode {
 		const children = (childrenMap[entry.key] || [])
-			.filter((c) => c.changes.length > 0)
+			.filter((c) => includedKeys.has(c.key))
 			.map(toTreeNode);
 
 		return {

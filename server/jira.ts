@@ -107,6 +107,7 @@ interface JiraSearchResponse {
 			assignee?: { displayName: string; accountId: string } | null;
 			issuetype?: { name: string };
 			parent?: { key: string };
+			updated?: string;
 			comment?: {
 				comments: Array<{
 					id: string;
@@ -290,7 +291,10 @@ interface JiraProject {
 }
 
 interface JiraRole {
-	actors?: Array<{ type: string; displayName?: string }>;
+	actors?: Array<{
+		type: string;
+		displayName?: string;
+	}>;
 }
 
 export async function fetchMembersFromJira(project: string): Promise<string[]> {
@@ -308,7 +312,9 @@ export async function fetchMembersFromJira(project: string): Promise<string[]> {
 			if (roleName === "atlassian-addons-project-access") continue;
 			try {
 				const parsed = new URL(roleUrl);
-				const roleData = await jiraFetch<JiraRole>(parsed.pathname);
+				const roleData = await jiraFetch<JiraRole>(
+					`${parsed.pathname}?excludeInactiveUsers=true`,
+				);
 				for (const actor of roleData.actors || []) {
 					if (actor.type === "atlassian-user-role-actor" && actor.displayName) {
 						names.add(actor.displayName);
@@ -318,30 +324,112 @@ export async function fetchMembersFromJira(project: string): Promise<string[]> {
 				// skip inaccessible roles
 			}
 		}
-
-		// Also fetch assignees
-		try {
-			const data = await jiraFetch<JiraSearchResponse>(
-				"/rest/api/3/search/jql",
-				{
-					method: "POST",
-					body: {
-						jql: `project = "${project}" AND assignee IS NOT EMPTY`,
-						maxResults: 50,
-						fields: ["assignee"],
-					},
-				},
-			);
-			for (const issue of data.issues || []) {
-				const name = issue.fields.assignee?.displayName;
-				if (name) names.add(name);
-			}
-		} catch (_e: unknown) {
-			// skip
-		}
-	} catch (e) {
+	} catch (e: unknown) {
 		console.warn("Failed to fetch members:", e);
 	}
 
 	return [...names].sort();
+}
+
+// ── Fetch Stale Issues (assigned but not updated in range) ──
+
+export interface StaleIssue {
+	key: string;
+	summary: string;
+	type: string;
+	status: string;
+	assignee: string;
+	parent_key: string | null;
+	updated: number; // epoch ms
+	is_context: boolean; // true = parent shown for tree context, not actually stale
+}
+
+export async function fetchStaleIssuesFromJira(
+	project: string,
+	member: string,
+	beforeDate: string,
+): Promise<StaleIssue[]> {
+	if (!isValidProjectKey(project)) {
+		throw new Error(`Invalid project key: ${project}`);
+	}
+
+	// Escape member name for JQL — backslashes, quotes, and special JQL chars
+	const escapedMember = member.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+	const jql = `project = "${project}" AND assignee = "${escapedMember}" AND updated < "${beforeDate}" AND statusCategory != Done ORDER BY updated ASC`;
+
+	const data = await jiraFetch<JiraSearchResponse>("/rest/api/3/search/jql", {
+		method: "POST",
+		body: {
+			jql,
+			maxResults: 50,
+			fields: [
+				"summary",
+				"status",
+				"assignee",
+				"issuetype",
+				"parent",
+				"updated",
+			],
+		},
+	});
+
+	const staleIssues: StaleIssue[] = (data.issues || []).map((issue) => ({
+		key: issue.key,
+		summary: issue.fields.summary,
+		type: issue.fields.issuetype?.name?.toLowerCase() || "task",
+		status: issue.fields.status?.name || "",
+		assignee: issue.fields.assignee?.displayName || member,
+		parent_key: issue.fields.parent?.key || null,
+		updated: new Date(issue.fields.updated || 0).getTime(),
+		is_context: false,
+	}));
+
+	// Walk up the parent chain to fetch all ancestors for tree context
+	const knownKeys = new Set(staleIssues.map((i) => i.key));
+	const MAX_DEPTH = 5;
+
+	for (let depth = 0; depth < MAX_DEPTH; depth++) {
+		const missingParentKeys = [
+			...new Set(
+				staleIssues
+					.map((i) => i.parent_key)
+					.filter((k): k is string => k !== null && !knownKeys.has(k)),
+			),
+		];
+
+		if (missingParentKeys.length === 0) break;
+
+		try {
+			const parentJql = `key in (${missingParentKeys.map((k) => `"${k}"`).join(",")})`;
+			const parentData = await jiraFetch<JiraSearchResponse>(
+				"/rest/api/3/search/jql",
+				{
+					method: "POST",
+					body: {
+						jql: parentJql,
+						maxResults: missingParentKeys.length,
+						fields: ["summary", "status", "issuetype", "parent", "updated"],
+					},
+				},
+			);
+			for (const issue of parentData.issues || []) {
+				knownKeys.add(issue.key);
+				staleIssues.push({
+					key: issue.key,
+					summary: issue.fields.summary,
+					type: issue.fields.issuetype?.name?.toLowerCase() || "task",
+					status: issue.fields.status?.name || "",
+					assignee: issue.fields.assignee?.displayName || "",
+					parent_key: issue.fields.parent?.key || null,
+					updated: new Date(issue.fields.updated || 0).getTime(),
+					is_context: true,
+				});
+			}
+		} catch (e: unknown) {
+			console.warn("[stale] Failed to fetch parent context issues:", e);
+			break;
+		}
+	}
+
+	return staleIssues;
 }
