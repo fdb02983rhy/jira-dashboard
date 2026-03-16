@@ -7,18 +7,24 @@ import {
 	getActivities,
 	getIssues,
 	getMembers,
+	getStaleCounts,
 	getStaleIssues,
 	getSyncedAt,
+	getUnassignedIssues,
 	insertActivities,
 	insertIssues,
 	setMembers,
+	setStaleCounts,
 	setStaleIssues,
 	setSyncedAt,
+	setUnassignedIssues,
 } from "./db.ts";
 import {
 	fetchActivitiesFromJira,
 	fetchMembersFromJira,
+	fetchStaleCountsFromJira,
 	fetchStaleIssuesFromJira,
+	fetchUnassignedIssuesFromJira,
 	isValidProjectKey,
 } from "./jira.ts";
 
@@ -199,6 +205,111 @@ app.get("/api/stale-issues/:project", async (c) => {
 		// Return cached if available
 		if (cached.issues.length > 0) {
 			return c.json({ issues: cached.issues });
+		}
+		return c.json({ error: msg }, 502);
+	}
+});
+
+// ── Stale Counts (summary per member) ────────────────
+
+app.get("/api/stale-counts/:project", async (c) => {
+	const project = c.req.param("project");
+	const before = c.req.query("before");
+
+	if (!before) {
+		return c.json({ error: "Missing before query param" }, 400);
+	}
+	if (!isValidProjectKey(project)) {
+		return c.json({ error: "Invalid project key" }, 400);
+	}
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(before)) {
+		return c.json({ error: "Invalid date format (expected YYYY-MM-DD)" }, 400);
+	}
+
+	// Check cache
+	const cached = getStaleCounts(project, before);
+	if (cached.isFresh) {
+		return c.json({
+			counts: cached.counts.map((row) => ({
+				member: row.member,
+				count: row.count,
+			})),
+		});
+	}
+
+	// Fetch from Jira
+	try {
+		const counts = await fetchStaleCountsFromJira(project, before);
+		setStaleCounts(project, before, counts);
+		return c.json({ counts });
+	} catch (e: unknown) {
+		const msg = e instanceof Error ? e.message : "Failed to fetch stale counts";
+		console.warn("[stale-counts] Error:", msg);
+		if (cached.counts.length > 0) {
+			return c.json({
+				counts: cached.counts.map((row) => ({
+					member: row.member,
+					count: row.count,
+				})),
+			});
+		}
+		return c.json({ error: msg }, 502);
+	}
+});
+
+// ── Unassigned Issues ────────────────────────────────
+
+app.get("/api/unassigned-issues/:project", async (c) => {
+	const project = c.req.param("project");
+
+	if (!isValidProjectKey(project)) {
+		return c.json({ error: "Invalid project key" }, 400);
+	}
+
+	// Normalize DB rows to API response shape (strip fetched_at, project)
+	const toResponse = (
+		rows: {
+			key: string;
+			summary: string;
+			type: string;
+			status: string;
+			parent_key: string | null;
+			is_context: number | boolean;
+			updated: number;
+		}[],
+	) =>
+		rows.map((i) => ({
+			key: i.key,
+			summary: i.summary,
+			type: i.type,
+			status: i.status,
+			parent_key: i.parent_key,
+			is_context: !!i.is_context,
+			updated: i.updated,
+		}));
+
+	// Check cache
+	const cached = getUnassignedIssues(project);
+	if (cached.isFresh) {
+		return c.json({ issues: toResponse(cached.issues) });
+	}
+
+	// Fetch from Jira
+	try {
+		const issues = await fetchUnassignedIssuesFromJira(project);
+		const dbIssues = issues.map((i) => ({
+			...i,
+			project,
+			is_context: i.is_context ? 1 : (0 as number),
+		}));
+		setUnassignedIssues(project, dbIssues);
+		return c.json({ issues: toResponse(issues) });
+	} catch (e: unknown) {
+		const msg =
+			e instanceof Error ? e.message : "Failed to fetch unassigned issues";
+		console.warn("[unassigned] Error:", msg);
+		if (cached.issues.length > 0) {
+			return c.json({ issues: toResponse(cached.issues) });
 		}
 		return c.json({ error: msg }, 502);
 	}
