@@ -75,7 +75,7 @@ export default function App() {
 						<>
 							{/* Loading overlay */}
 							{state.loading && (
-								<div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[2px]">
+								<div className="sticky top-0 z-10 -mx-6 -mt-6 flex h-[calc(100vh-56px)] items-center justify-center bg-background/60 backdrop-blur-[2px]">
 									<div className="flex flex-col items-center gap-2">
 										<Loader2 className="size-6 animate-spin text-primary" />
 										<span className="text-xs font-medium text-muted-foreground">

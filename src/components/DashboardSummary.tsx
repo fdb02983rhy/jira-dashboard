@@ -1,5 +1,14 @@
 import { Clock, Loader2, TrendingUp, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import {
+	Bar,
+	BarChart,
+	CartesianGrid,
+	ResponsiveContainer,
+	Tooltip,
+	XAxis,
+	YAxis,
+} from "recharts";
 import { UnassignedIssues } from "@/components/UnassignedIssues";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -97,75 +106,122 @@ function MemberActivityChart({ members }: { members: MemberCount[] }) {
 
 // ── Activity By Day Chart ───────────────────────────────────
 
+function ChartTooltipContent({
+	active,
+	payload,
+	label,
+}: {
+	active?: boolean;
+	payload?: { value: number }[];
+	label?: string;
+}) {
+	if (!active || !payload?.length) return null;
+	return (
+		<div className="rounded-md border bg-popover px-3 py-1.5 text-xs shadow-md">
+			<p className="font-medium">{label}</p>
+			<p className="tabular-nums text-muted-foreground">
+				{payload[0]?.value} changes
+			</p>
+		</div>
+	);
+}
+
 function ActivityByDayChart({ activities }: { activities: Activity[] }) {
 	const state = useAppState();
 
 	const dailyCounts = useMemo(() => {
-		// Group activities by date
 		const counts = new Map<string, number>();
 		for (const a of activities) {
 			const dateStr = a.timestamp.toISOString().split("T")[0] as string;
 			counts.set(dateStr, (counts.get(dateStr) || 0) + 1);
 		}
 
-		// Fill in all dates in the range
 		const range = getDateRange(state.period, state.currentDate);
-		const result: { date: string; count: number }[] = [];
+		const result: { date: string; count: number; day: string }[] = [];
 		const d = new Date(range.start);
 		while (d <= range.end) {
 			const dateStr = d.toISOString().split("T")[0] as string;
-			result.push({ date: dateStr, count: counts.get(dateStr) || 0 });
+			result.push({
+				date: dateStr,
+				count: counts.get(dateStr) || 0,
+				day: `${d.getMonth() + 1}/${d.getDate()}`,
+			});
 			d.setDate(d.getDate() + 1);
 		}
 		return result;
 	}, [activities, state.period, state.currentDate]);
 
-	const maxCount = Math.max(...dailyCounts.map((d) => d.count), 1);
+	const totalCount = dailyCounts.reduce((sum, d) => sum + d.count, 0);
 	const isSingleDay = dailyCounts.length <= 1;
 
+	// Show tick every 7 days for monthly, every day for weekly
+	const tickInterval =
+		dailyCounts.length > 14 ? 6 : dailyCounts.length > 7 ? 2 : 0;
+
 	return (
-		<Card>
-			<CardContent>
-				<div className="mb-3 flex items-center gap-2">
-					<TrendingUp className="size-4 text-muted-foreground" />
-					<h3 className="text-sm font-semibold">Activity by Day</h3>
+		<Card className="flex flex-col">
+			<CardContent className="flex flex-1 flex-col">
+				<div className="mb-3 flex items-center justify-between">
+					<div className="flex items-center gap-2">
+						<TrendingUp className="size-4 text-muted-foreground" />
+						<h3 className="text-sm font-semibold">Activity by Day</h3>
+					</div>
+					<span className="text-xs tabular-nums text-muted-foreground">
+						{totalCount} total
+					</span>
 				</div>
 
 				{isSingleDay ? (
-					<div className="flex flex-col items-center justify-center py-6">
+					<div className="flex flex-1 flex-col items-center justify-center py-6">
 						<span className="text-4xl font-bold tracking-tight">
 							{dailyCounts[0]?.count ?? 0}
 						</span>
 						<span className="text-xs text-muted-foreground">changes today</span>
 					</div>
 				) : (
-					<div className="flex h-[150px] items-end gap-0.5">
-						{dailyCounts.map((d) => (
-							<div
-								key={d.date}
-								className="group relative flex flex-1 flex-col items-center justify-end"
+					<div className="min-h-[160px] flex-1">
+						<ResponsiveContainer width="100%" height="100%">
+							<BarChart
+								data={dailyCounts}
+								margin={{ top: 4, right: 4, bottom: 0, left: -20 }}
 							>
-								{/* Count tooltip on hover */}
-								<span className="mb-1 text-[9px] tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-									{d.count}
-								</span>
-								<div
-									className="w-full rounded-t-sm bg-primary/50 transition-all group-hover:bg-primary/70"
-									style={{
-										height: `${(d.count / maxCount) * 100}%`,
-										minHeight: d.count > 0 ? "2px" : "0px",
-									}}
+								<CartesianGrid
+									strokeDasharray="3 3"
+									vertical={false}
+									stroke="var(--color-muted)"
+									strokeOpacity={0.5}
 								/>
-								{/* Date label — show for first, last, and every 7th */}
-								{dailyCounts.length <= 7 ||
-								d === dailyCounts[0] ||
-								d === dailyCounts[dailyCounts.length - 1] ? (
-									<span className="mt-1 text-[8px] text-muted-foreground">
-										{d.date.slice(5)}
-									</span>
-								) : null}
-							</div>
-						))}
+								<XAxis
+									dataKey="day"
+									tick={{
+										fontSize: 10,
+										fill: "var(--color-muted-foreground)",
+									}}
+									tickLine={false}
+									axisLine={false}
+									interval={tickInterval}
+								/>
+								<YAxis
+									tick={{
+										fontSize: 10,
+										fill: "var(--color-muted-foreground)",
+									}}
+									tickLine={false}
+									axisLine={false}
+									allowDecimals={false}
+								/>
+								<Tooltip
+									content={<ChartTooltipContent />}
+									cursor={{ fill: "var(--color-muted)", opacity: 0.3 }}
+								/>
+								<Bar
+									dataKey="count"
+									fill="var(--color-primary)"
+									opacity={0.8}
+									radius={[3, 3, 0, 0]}
+								/>
+							</BarChart>
+						</ResponsiveContainer>
 					</div>
 				)}
 			</CardContent>

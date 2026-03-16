@@ -27,25 +27,29 @@ export function getDateRange(
 	period: "daily" | "weekly" | "monthly",
 	currentDate: Date,
 ): DateRange {
-	const d = new Date(currentDate);
-	let start: Date;
-	let end: Date;
+	// Rolling windows: end = currentDate, start = currentDate - N days
+	const end = new Date(
+		currentDate.getFullYear(),
+		currentDate.getMonth(),
+		currentDate.getDate(),
+		23,
+		59,
+		59,
+		999,
+	);
 
+	let start: Date;
 	if (period === "daily") {
-		start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-		end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+		start = new Date(end.getFullYear(), end.getMonth(), end.getDate());
 	} else if (period === "weekly") {
-		const day = d.getDay();
-		start = new Date(d);
-		start.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+		start = new Date(end);
+		start.setDate(end.getDate() - 6);
 		start.setHours(0, 0, 0, 0);
-		end = new Date(start);
-		end.setDate(start.getDate() + 6);
-		end.setHours(23, 59, 59, 999);
 	} else {
-		// monthly
-		start = new Date(d.getFullYear(), d.getMonth(), 1);
-		end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+		// monthly — last 30 days
+		start = new Date(end);
+		start.setDate(end.getDate() - 29);
+		start.setHours(0, 0, 0, 0);
 	}
 
 	return { start, end };
@@ -104,7 +108,7 @@ export function navigateDate(
 	} else if (period === "weekly") {
 		d.setDate(d.getDate() + 7 * delta);
 	} else {
-		d.setMonth(d.getMonth() + delta);
+		d.setDate(d.getDate() + 30 * delta);
 	}
 	return d;
 }

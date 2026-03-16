@@ -50,14 +50,18 @@ export function Sidebar({ members }: SidebarProps) {
 	return (
 		<aside className="flex h-full w-[280px] shrink-0 flex-col border-r border-border bg-muted/40">
 			{/* Brand */}
-			<div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-5">
+			<button
+				type="button"
+				className="flex h-14 shrink-0 cursor-pointer items-center gap-2.5 border-b border-border px-5 hover:bg-muted/60"
+				onClick={() => dispatch({ type: "SET_SELECTED_MEMBER", payload: null })}
+			>
 				<div className="grid size-7 place-items-center rounded-md bg-primary font-mono text-[13px] font-extrabold leading-none text-primary-foreground">
 					JD
 				</div>
 				<h1 className="text-[15px] font-bold uppercase tracking-[3px] text-foreground">
 					Jira Dashboard
 				</h1>
-			</div>
+			</button>
 
 			{/* Subtitle */}
 			<div className="px-5 pt-3">
