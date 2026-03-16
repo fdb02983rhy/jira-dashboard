@@ -19,6 +19,8 @@ bun.lockb
 
 # Cache
 server/cache.db
+server/cache.db-shm
+server/cache.db-wal
 
 # Misc
 *.log
