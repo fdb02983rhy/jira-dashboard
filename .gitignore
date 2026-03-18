@@ -22,5 +22,8 @@ server/cache.db
 server/cache.db-shm
 server/cache.db-wal
 
+# Internal docs
+docs/superpowers/
+
 # Misc
 *.log
