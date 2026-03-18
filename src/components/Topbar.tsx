@@ -1,8 +1,41 @@
-import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import {
+	AArrowDown,
+	AArrowUp,
+	ChevronLeft,
+	ChevronRight,
+	RefreshCw,
+} from "lucide-react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDate, getDateRange, navigateDate } from "@/lib/dates";
 import { savePeriod, useAppDispatch, useAppState } from "@/state/store";
+
+const FONT_SIZES = [12, 13, 14, 15, 16, 18, 20] as const;
+const DEFAULT_FONT_SIZE = 14;
+const LS_KEY = "jira-dash-font-size";
+
+function getInitialFontSize(): number {
+	try {
+		const stored = localStorage.getItem(LS_KEY);
+		if (stored) {
+			const n = Number(stored);
+			if (FONT_SIZES.includes(n as (typeof FONT_SIZES)[number])) return n;
+		}
+	} catch {
+		/* ignore */
+	}
+	return DEFAULT_FONT_SIZE;
+}
+
+function applyFontSize(size: number) {
+	document.documentElement.style.fontSize = `${size}px`;
+	try {
+		localStorage.setItem(LS_KEY, String(size));
+	} catch {
+		/* ignore */
+	}
+}
 
 const CATEGORY_CHIPS = [
 	{ key: "status", label: "Status", color: "bg-blue-500" },
@@ -19,6 +52,21 @@ interface TopbarProps {
 export function Topbar({ onRefresh, loading }: TopbarProps) {
 	const state = useAppState();
 	const dispatch = useAppDispatch();
+	const [fontSize, setFontSize] = useState(() => {
+		const size = getInitialFontSize();
+		applyFontSize(size);
+		return size;
+	});
+
+	const changeFontSize = useCallback((delta: number) => {
+		setFontSize((prev) => {
+			const idx = FONT_SIZES.indexOf(prev as (typeof FONT_SIZES)[number]);
+			const nextIdx = Math.max(0, Math.min(FONT_SIZES.length - 1, idx + delta));
+			const next = FONT_SIZES[nextIdx] ?? prev;
+			applyFontSize(next);
+			return next;
+		});
+	}, []);
 
 	const { period, currentDate, categoryFilters } = state;
 	const range = getDateRange(period, currentDate);
@@ -119,8 +167,34 @@ export function Topbar({ onRefresh, loading }: TopbarProps) {
 				})}
 			</div>
 
-			{/* Refresh */}
-			<div className="ml-auto">
+			{/* Font size + Refresh */}
+			<div className="ml-auto flex items-center gap-1">
+				<Button
+					variant="outline"
+					size="icon"
+					className="size-[30px]"
+					onClick={() => changeFontSize(-1)}
+					disabled={fontSize <= FONT_SIZES[0]}
+					title="Decrease font size"
+				>
+					<AArrowDown className="size-4" />
+				</Button>
+				<span className="w-7 text-center text-[10px] tabular-nums text-muted-foreground">
+					{fontSize}
+				</span>
+				<Button
+					variant="outline"
+					size="icon"
+					className="size-[30px]"
+					onClick={() => changeFontSize(1)}
+					disabled={fontSize >= (FONT_SIZES[FONT_SIZES.length - 1] ?? 20)}
+					title="Increase font size"
+				>
+					<AArrowUp className="size-4" />
+				</Button>
+
+				<div className="mx-1 h-5 w-px bg-border" />
+
 				<Button
 					variant="outline"
 					size="icon"
