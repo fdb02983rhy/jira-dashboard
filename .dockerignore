@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.git
+.vscode
+.idea
+.DS_Store
+server/cache.db
+server/cache.db-shm
+server/cache.db-wal
+docs
+*.log

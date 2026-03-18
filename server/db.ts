@@ -2,7 +2,8 @@ import { Database } from "bun:sqlite";
 
 // ── Schema ──────────────────────────────────────────────────
 
-const db = new Database("server/cache.db");
+const dbPath = process.env.DB_PATH || "server/cache.db";
+const db = new Database(dbPath);
 db.run("PRAGMA journal_mode = WAL");
 
 db.run(`

@@ -196,7 +196,12 @@ app.get("/api/stale-issues/:project", async (c) => {
 	// Fetch from Jira
 	try {
 		const fetched = await fetchStaleIssuesFromJira(project, member, before);
-		const dbIssues = fetched.map((i) => ({ ...i, project, member }));
+		const dbIssues = fetched.map((i) => ({
+			...i,
+			project,
+			member,
+			is_context: i.is_context ? 1 : (0 as number),
+		}));
 		setStaleIssues(project, member, before, dbIssues);
 		return c.json({ issues: dbIssues });
 	} catch (e: unknown) {
