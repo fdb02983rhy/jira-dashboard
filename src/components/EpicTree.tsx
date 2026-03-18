@@ -1,5 +1,5 @@
-import { ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, ChevronsUpDown } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
 	Collapsible,
@@ -35,16 +35,64 @@ interface EpicTreeProps {
 
 // ── Component ───────────────────────────────────────────────
 
+function collectAllKeys(nodes: TreeNode[], out: Set<string>): Set<string> {
+	for (const n of nodes) {
+		if (n.children.length > 0 || n.changes.length > 0) out.add(n.key);
+		if (n.children.length > 0) collectAllKeys(n.children, out);
+	}
+	return out;
+}
+
 export function EpicTree({ issueTree }: EpicTreeProps) {
 	const nodeCount = useMemo(() => countTreeNodes(issueTree), [issueTree]);
+	const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+
+	const allKeys = useMemo(
+		() => collectAllKeys(issueTree, new Set()),
+		[issueTree],
+	);
+
+	const toggleKey = useCallback((key: string, open: boolean) => {
+		setExpandedKeys((prev) => {
+			const next = new Set(prev);
+			if (open) next.add(key);
+			else next.delete(key);
+			return next;
+		});
+	}, []);
+
+	const expandAll = useCallback(
+		() => setExpandedKeys(new Set(allKeys)),
+		[allKeys],
+	);
+	const collapseAll = useCallback(() => setExpandedKeys(new Set()), []);
+
+	const allExpanded = allKeys.size > 0 && expandedKeys.size >= allKeys.size;
 
 	return (
 		<div className="rounded-xl border bg-card p-4">
 			<div className="mb-3 flex items-center justify-between">
 				<h2 className="text-sm font-semibold">Changed Issues</h2>
-				<Badge variant="secondary" className="tabular-nums">
-					{nodeCount}
-				</Badge>
+				<div className="flex items-center gap-2">
+					{issueTree.length > 0 && (
+						<button
+							type="button"
+							className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted/60"
+							onClick={allExpanded ? collapseAll : expandAll}
+							title={allExpanded ? "Collapse all" : "Expand all"}
+						>
+							{allExpanded ? (
+								<ChevronsUpDown className="size-3" />
+							) : (
+								<ChevronDown className="size-3" />
+							)}
+							{allExpanded ? "Collapse" : "Expand"}
+						</button>
+					)}
+					<Badge variant="secondary" className="tabular-nums">
+						{nodeCount}
+					</Badge>
+				</div>
 			</div>
 
 			{issueTree.length === 0 ? (
@@ -58,7 +106,13 @@ export function EpicTree({ issueTree }: EpicTreeProps) {
 			) : (
 				<div className="space-y-0.5">
 					{issueTree.map((node) => (
-						<TreeNodeRow key={node.key} node={node} depth={0} />
+						<TreeNodeRow
+							key={node.key}
+							node={node}
+							depth={0}
+							expandedKeys={expandedKeys}
+							onToggle={toggleKey}
+						/>
 					))}
 				</div>
 			)}
@@ -68,8 +122,18 @@ export function EpicTree({ issueTree }: EpicTreeProps) {
 
 // ── Recursive tree node ─────────────────────────────────────
 
-function TreeNodeRow({ node, depth }: { node: TreeNode; depth: number }) {
-	const [open, setOpen] = useState(false);
+function TreeNodeRow({
+	node,
+	depth,
+	expandedKeys,
+	onToggle,
+}: {
+	node: TreeNode;
+	depth: number;
+	expandedKeys: Set<string>;
+	onToggle: (key: string, open: boolean) => void;
+}) {
+	const open = expandedKeys.has(node.key);
 	const hasChildren = node.children.length > 0;
 	const hasChanges = node.changes.length > 0;
 	const expandable = hasChildren || hasChanges;
@@ -80,7 +144,7 @@ function TreeNodeRow({ node, depth }: { node: TreeNode; depth: number }) {
 	);
 
 	return (
-		<Collapsible open={open} onOpenChange={setOpen}>
+		<Collapsible open={open} onOpenChange={(v) => onToggle(node.key, v)}>
 			<div style={{ paddingLeft: `${depth * 20}px` }}>
 				<CollapsibleTrigger
 					className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted/60"
@@ -180,7 +244,13 @@ function TreeNodeRow({ node, depth }: { node: TreeNode; depth: number }) {
 					{hasChildren && (
 						<div className="space-y-0.5">
 							{node.children.map((child) => (
-								<TreeNodeRow key={child.key} node={child} depth={depth + 1} />
+								<TreeNodeRow
+									key={child.key}
+									node={child}
+									depth={depth + 1}
+									expandedKeys={expandedKeys}
+									onToggle={onToggle}
+								/>
 							))}
 						</div>
 					)}

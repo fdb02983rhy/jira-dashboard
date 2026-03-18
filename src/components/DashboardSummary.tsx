@@ -128,6 +128,8 @@ function ChartTooltipContent({
 
 function ActivityByDayChart({ activities }: { activities: Activity[] }) {
 	const state = useAppState();
+	const [mounted, setMounted] = useState(false);
+	useEffect(() => setMounted(true), []);
 
 	const dailyCounts = useMemo(() => {
 		const counts = new Map<string, number>();
@@ -171,7 +173,9 @@ function ActivityByDayChart({ activities }: { activities: Activity[] }) {
 					</span>
 				</div>
 
-				{isSingleDay ? (
+				{!mounted ? (
+					<div className="h-[240px]" />
+				) : isSingleDay ? (
 					<div className="flex flex-1 flex-col items-center justify-center py-6">
 						<span className="text-4xl font-bold tracking-tight">
 							{dailyCounts[0]?.count ?? 0}
@@ -179,8 +183,8 @@ function ActivityByDayChart({ activities }: { activities: Activity[] }) {
 						<span className="text-xs text-muted-foreground">changes today</span>
 					</div>
 				) : (
-					<div className="min-h-[160px] flex-1">
-						<ResponsiveContainer width="100%" height="100%">
+					<div>
+						<ResponsiveContainer width="100%" height={240}>
 							<BarChart
 								data={dailyCounts}
 								margin={{ top: 4, right: 4, bottom: 0, left: -20 }}
